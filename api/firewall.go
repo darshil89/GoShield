@@ -97,7 +97,6 @@ type RateLimiter struct {
 	resetTime   time.Time
 }
 
-// NewRateLimiter creates a new rate limiter.
 func NewRateLimiter(max int) *RateLimiter {
 	return &RateLimiter{
 		maxRequests: max,
