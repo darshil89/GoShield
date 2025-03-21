@@ -2,52 +2,65 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/darshil89/firewall/api"
 	"github.com/darshil89/firewall/types"
 )
 
+var fw types.Firewall
+
 func main() {
-	// Create a sample configuration.
+	// Create a sample configuration
 	cfg := types.Config{
-		MaxRequestsPerSecond: 5,
+		MaxRequestsPerSecond: 2,
 		BlockedIPs:           []string{"192.168.1.100"},
 		CustomRules: []types.Rule{
 			{
 				ID:       "rule1",
-				SourceIP: "",         // Empty means any source
-				DestIP:   "10.0.0.1", // Block destination IP 10.0.0.1
+				SourceIP: "",
+				DestIP:   "10.0.0.1",
 				Protocol: "TCP",
 				Port:     80,
 			},
 		},
 	}
 
-	// Instantiate the firewall.
-	fw, err := api.NewFirewall(cfg)
+	// Create firewall instance
+	var err error
+	fw, err = api.NewFirewall(cfg)
 	if err != nil {
 		log.Fatalf("Error creating firewall: %v", err)
 	}
 
-	// Create a test request.
-	testReq := types.Request{
-		SourceIP: "192.168.1.200",
-		DestIP:   "10.0.0.1",
-		Protocol: "TCP",
-		Port:     80,
-	}
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Create a request object for the firewall
+		req := types.Request{
+			SourceIP: r.RemoteAddr,
+			DestIP:   r.Host,
+			Protocol: "HTTP",
+			Port:     80,
+		}
 
-	// Process the test request using the Filter method.
-	resp, err := fw.Filter(context.Background(), testReq)
-	if err != nil {
-		log.Fatalf("Filter error: %v", err)
-	}
+		// Use the firewall to filter the request
+		ctx := context.Background()
+		resp, err := fw.Filter(ctx, req)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 
-	// Pretty-print the response.
-	respJSON, _ := json.MarshalIndent(resp, "", "  ")
-	fmt.Println("Filter response:")
-	fmt.Println(string(respJSON))
+		if !resp.Allowed {
+			http.Error(w, resp.Message, http.StatusForbidden)
+			return
+		}
+
+		fmt.Fprintln(w, "Welcome to the firewall backend server")
+	})
+
+	// Start the server
+	fmt.Println("Starting firewall backend server on :8080...")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
